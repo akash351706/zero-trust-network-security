@@ -1,0 +1,35 @@
+PHASE 1 - RESULTS SUMMARY
+Date: August 12, 2026
+
+Dataset: NSL-KDD (Train set), 125,973 total records
+- Normal traffic: 67,343
+- Attack traffic: 58,630
+
+Models trained:
+1. Isolation Forest (unsupervised anomaly detection)
+2. Random Forest Classifier (supervised, binary: normal vs attack)
+
+Random Forest Evaluation (on 20% held-out test set, 25,195 samples):
+- Accuracy: 100%
+- Precision: 1.00
+- Recall: 1.00
+- F1-score: 1.00
+- Confusion Matrix: [[11748, 25], [8, 13414]]
+
+Note: Labels were simplified to binary (normal/attack) rather than 
+multi-class attack categories, which contributes to the high accuracy. 
+Multi-class breakdown is planned as a next step.
+
+Completed:
+- AWS VPC created (zero-trust-project)
+- Python environment set up
+- Dataset preprocessing pipeline (preprocess.py)
+- Isolation Forest + Random Forest training pipeline (train.py)
+- Model evaluation with metrics
+
+Pending (blocked or not yet started):
+- AWS EC2 instance (blocked - account verification issue, support case filed)
+- Live packet capture with Scapy (needs EC2)
+- Multi-class attack classification
+- GitHub repository push
+- IEEE paper draft
