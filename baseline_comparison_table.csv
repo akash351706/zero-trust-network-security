@@ -1,0 +1,5 @@
+Source,Reported Accuracy/F1
+Roy et al. (stacking ensemble),98.5% / F1 not reported separately
+De Souza et al. (two-step ensemble),99.81% accuracy
+Scientific Reports FA-CNN+Autoencoder,97% (NSL-KDD)
+This Project (stacked IF+RF+LSTM-AE),F1=0.9996 (5-fold mean)
