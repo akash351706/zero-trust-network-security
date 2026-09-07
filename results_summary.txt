@@ -1,35 +1,160 @@
-PHASE 1 - RESULTS SUMMARY
-Date: August 12, 2026
+========================================================================
+PROJECT RESULTS SUMMARY (UPDATED)
+A Trust-Score-Based Adaptive Zero Trust Framework for Real-Time
+Intrusion Detection
+Akash B | Reg. No: 2508110001 | ME Communication Systems
+========================================================================
 
-Dataset: NSL-KDD (Train set), 125,973 total records
-- Normal traffic: 67,343
-- Attack traffic: 58,630
+------------------------------------------------------------------------
+1. CLASSICAL MODELS (Isolation Forest + Random Forest)
+------------------------------------------------------------------------
+Dataset: NSL-KDD, preprocessed into 5 classes
+(Normal, DoS, PortScan, BruteForce, Data Exfiltration)
 
-Models trained:
-1. Isolation Forest (unsupervised anomaly detection)
-2. Random Forest Classifier (supervised, binary: normal vs attack)
+Per-class evaluation (Random Forest, tuned via GridSearchCV):
+  - Normal, DoS: near-100% precision/recall
+  - PortScan, BruteForce: strong performance
+  - Data Exfiltration: weaker (small sample size in this class)
 
-Random Forest Evaluation (on 20% held-out test set, 25,195 samples):
-- Accuracy: 100%
-- Precision: 1.00
-- Recall: 1.00
-- F1-score: 1.00
-- Confusion Matrix: [[11748, 25], [8, 13414]]
+5-fold Stratified Cross-Validation:
+  Mean F1 (macro): 0.9191
 
-Note: Labels were simplified to binary (normal/attack) rather than 
-multi-class attack categories, which contributes to the high accuracy. 
-Multi-class breakdown is planned as a next step.
+Mutual Information Feature Ranking (top features):
+  src_bytes, service, diff_srv_rate, flag
 
-Completed:
-- AWS VPC created (zero-trust-project)
-- Python environment set up
-- Dataset preprocessing pipeline (preprocess.py)
-- Isolation Forest + Random Forest training pipeline (train.py)
-- Model evaluation with metrics
+------------------------------------------------------------------------
+2. LIVE PACKET CAPTURE (AWS EC2)
+------------------------------------------------------------------------
+Platform: AWS EC2 (t3.micro, Ubuntu 26.04 LTS), custom VPC (10.0.0.0/16)
+Tool: Scapy-based custom sniffer (capture.py)
+Result: 58,571 real packets captured (timestamp, src/dst IP, protocol,
+        ports, packet size), saved as captured_traffic.csv
 
-Pending (blocked or not yet started):
-- AWS EC2 instance (blocked - account verification issue, support case filed)
-- Live packet capture with Scapy (needs EC2)
-- Multi-class attack classification
-- GitHub repository push
-- IEEE paper draft
+------------------------------------------------------------------------
+3. TRUST-SCORE FUNCTION (Section 2)
+------------------------------------------------------------------------
+T(x) = 1 - [ w1.y_hat(x) + w2.sigmoid(s(x)) + w3.D(x) ]
+
+Weight search result (grid search against validation F1):
+  w1 (Random Forest posterior)     = 0.55
+  w2 (Isolation Forest, sigmoid)   = 0.40
+  w3 (drift term, placeholder)     = 0.05
+  Best F1 at this weighting        = 0.9997
+  Classification threshold         = T(x) < 0.55 -> malicious
+
+Note: D(x) held at 0 during this search (drift monitor not yet built -
+planned for Phase 2). w3 is provisional and will be re-tuned once real
+drift detection exists.
+
+------------------------------------------------------------------------
+4. LSTM-AUTOENCODER (TEMPORAL BASELINE)
+------------------------------------------------------------------------
+Architecture: LSTM encoder -> latent vector -> LSTM decoder
+Trained on: sliding windows (size=10) of Normal-only flow sequences
+Final training loss: 0.5971 | Validation loss: 0.5398
+
+Mean reconstruction error by class:
+  DataExfiltration : 1.953539   (highest - well separated)
+  BruteForce        : 0.762532
+  PortScan          : 0.749466
+  Normal            : 0.588962
+  DoS               : 0.588444   (closest to Normal - expected, since
+                                   DoS often resembles high-volume
+                                   "normal-shaped" traffic)
+
+------------------------------------------------------------------------
+5. STACKED ENSEMBLE (RF + IF + LSTM-AE)
+------------------------------------------------------------------------
+Meta-learner: Logistic Regression (C=0.1)
+
+Classification report (held-out test split):
+              precision  recall  f1-score  support
+  Normal        1.00      1.00     1.00     13468
+  Attack        1.00      1.00     1.00     11725
+  Accuracy                         1.00     25193
+
+F1 score: 0.9997
+
+Learned stacking weights:
+  Random Forest signal    : 12.10
+  Isolation Forest signal : 0.64
+  LSTM-AE signal          : 0.013
+  Intercept               : -6.42
+
+Interpretation: Random Forest dominates because it already separates
+this benchmark near-perfectly on its own (a known property of NSL-KDD,
+also reflected in comparable published results - see baseline table
+below). LSTM-AE and Isolation Forest are expected to contribute more
+under concept drift or novel attack patterns not well represented in
+this training data.
+
+------------------------------------------------------------------------
+6. STATISTICAL SIGNIFICANCE TESTING (5-fold CV)
+------------------------------------------------------------------------
+Compared per-fold F1: Ensemble vs Random Forest alone vs Isolation
+Forest alone (fresh meta-learner retrained on each fold's train split).
+
+Per-fold F1 scores:
+  Fold 1: RF-alone=0.9997  IF-alone=0.6352  Ensemble=0.9997
+  Fold 2: RF-alone=0.9997  IF-alone=0.6352  Ensemble=0.9997
+  Fold 3: RF-alone=0.9997  IF-alone=0.6352  Ensemble=0.9997
+  Fold 4: RF-alone=0.9995  IF-alone=0.6352  Ensemble=0.9995
+  Fold 5: RF-alone=0.9994  IF-alone=0.6352  Ensemble=0.9994
+
+Mean +/- std across 5 folds:
+  RF alone   : 0.9996 +/- 0.0001
+  IF alone   : 0.6352 +/- 0.0000
+  Ensemble   : 0.9996 +/- 0.0001
+
+Paired significance tests:
+  Ensemble vs RF alone : paired t-test  t=0.0004  p=0.9997
+                         -> NOT significant (p>0.05)
+                         Wilcoxon signed-rank  W=1.0000  p=1.0000
+                         -> confirms no significant difference
+  Ensemble vs IF alone : paired t-test  t=4865.7710  p=0.0000
+                         -> SIGNIFICANT (p<0.05)
+
+Interpretation: the ensemble is statistically indistinguishable from
+Random Forest alone on this benchmark (expected, since RF already
+near-saturates NSL-KDD performance), but is significantly and
+substantially better than Isolation Forest alone. The honest claim
+this supports: the stacked ensemble matches the strongest individual
+model's accuracy while adding Isolation Forest's and the LSTM-AE's
+complementary signals, which are expected to matter more under concept
+drift or novel attacks not well represented in this static benchmark -
+a claim to be tested more directly once Phase 2's drift monitor exists.
+
+------------------------------------------------------------------------
+7. BASELINE COMPARISON (NSL-KDD, published results)
+------------------------------------------------------------------------
+  Roy et al. (stacking ensemble)          : 98.5% accuracy
+  De Souza et al. (two-step ensemble)     : 99.81% accuracy
+  Scientific Reports FA-CNN+Autoencoder   : 97% (NSL-KDD)
+  This Project (stacked IF+RF+LSTM-AE)    : F1 = 0.9996 (5-fold mean)
+
+------------------------------------------------------------------------
+8. EXPLAINABILITY (SHAP)
+------------------------------------------------------------------------
+- shap_random_forest_summary.png: shows which raw traffic features
+  (src_bytes, service, flag, etc.) drive Random Forest's malicious-flow
+  predictions
+- shap_meta_learner_summary.png: shows Random Forest's signal
+  dominates the final ensemble decision, consistent with the learned
+  stacking weights above
+
+------------------------------------------------------------------------
+9. PUBLICATION
+------------------------------------------------------------------------
+IEEE conference paper based on this work: ACCEPTED
+
+------------------------------------------------------------------------
+10. HONEST LIMITATIONS / OPEN ITEMS
+------------------------------------------------------------------------
+- Drift-adjustment term D(x) is currently a placeholder (0) - real
+  implementation planned for Phase 2
+- Random Forest's dominant weight in the ensemble reflects benchmark
+  separability, not necessarily generalizable superiority under drift
+- Enforcement logic, SDN integration, and dashboard are Phase 2 scope,
+  not yet started
+
+========================================================================
